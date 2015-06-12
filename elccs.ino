@@ -86,11 +86,13 @@ struct port {
   unsigned long m1;
   long dm0;
 
+  bool active;
+
   int ds() {
     return s0 - s1;
   }
 
-  port(int my_pin, int my_mode, bool my_analog = false, int s = LOW) : pin(my_pin), mode(my_mode), analog(my_analog) {
+  port(int my_pin, int my_mode, bool my_analog = false, int s = LOW) : pin(my_pin), mode(my_mode), analog(my_analog), active(true) {
 
     pinMode(pin, mode);
 
@@ -103,6 +105,16 @@ struct port {
       s0 = get();
       read();
     }
+  }
+
+  void status() {
+    Serial.print("; PIN ");
+    Serial.print(pin, DEC);
+    Serial.print(active ? " ON" : " --");
+    Serial.print(s0 == LOW ? " LO" : " HI");
+    Serial.print(ds() < 0 ? " FALL " : ds() > 0 ? " RISE " : " ---- ");
+    Serial.print(dm(), DEC);
+    Serial.println(" MS");
   }
 
   int get() {
@@ -145,17 +157,17 @@ struct port {
   }
 
   int step() {
-     return mode == OUTPUT ? write(s0) : read();
+    return mode == OUTPUT ? write(s0) : read();
   }
 };
 
 enum port_name {
-   port_fault     = 2,
-   port_emergency = 4,
-   port_ignition  = 5,
-   port_unlock    = 8,
-   port_lock      = 12,
-   port_battery   = A0,
+  port_fault     = 2,
+  port_emergency = 4,
+  port_ignition  = 5,
+  port_unlock    = 8,
+  port_lock      = 12,
+  port_battery   = A0,
 };
 
 struct port ports[] = {
@@ -206,9 +218,9 @@ void help() {
 
 void setup() {
 
-  Serial.begin(19200);
+  Serial.begin(115200);
 
-  delay(250);
+  delay(500);
 
   version();
 }
@@ -243,8 +255,40 @@ void buffer_handler() {
   }
 }
 
+void port_handler(struct port& p) {
+
+  p.step();
+
+  if (p.pin == port_emergency) {
+
+    if (p.active) {
+
+      if (p.s0 == LOW and p.ds() == 0 and p.dm() >= 3000) {
+        p.active = false;
+        p.status();
+      }
+
+    } else {
+
+      if (p.ds() > 0) {
+        p.active = true;
+        p.status();
+      }
+
+    }
+  }
+  
+
+}
+
+unsigned int idx = 0;
+
 void loop() {
+
+  port_handler(ports[idx]);
   buffer_handler();
+  
+  ++idx %= ports_n;
 }
 
 
