@@ -8,8 +8,6 @@
 #include <ctype.h>
 #include <string.h>
 
-typedef typeof(LOW) pinstate_t;
-
 /*
  * linebuf - line buffer for serial device
  */
@@ -25,7 +23,7 @@ struct linebuf {
   bool locked;
 
   linebuf() :
-  line_sz(0), locked(false) {
+    line_sz(0), locked(false) {
   }
 
   bool empty() const {
@@ -74,146 +72,111 @@ struct linebuf {
   }
 };
 
-/*
- * DPST relays
- */
+struct port {
 
-struct relay {
+  int pin;
+  int mode;
 
-  uint8_t pin;
-  uint16_t ms;
+  bool analog;
 
-  const char *command;
+  int s0;
+  int s1;
 
-  relay(uint8_t my_pin, uint16_t my_ms, const char *my_command) :
-  pin(my_pin), ms(my_ms), command(my_command) {
+  unsigned long m0;
+  unsigned long m1;
+  long dm0;
 
-    pinMode(pin, OUTPUT);
-    digitalWrite(pin, HIGH);
+  int ds() {
+    return s0 - s1;
   }
 
-  void report(pinstate_t state) const {
-    Serial.print(":digital ");
-    Serial.print(state == HIGH ? "HI" : "LO");
-    Serial.print(" gpio ");
-    Serial.print(pin, DEC);
-    Serial.println("");
-  }
+  port(int my_pin, int my_mode, bool my_analog = false, int s = LOW) : pin(my_pin), mode(my_mode), analog(my_analog) {
 
-#define SETPIN(_PIN_, _LEVEL_, _MS_) do { digitalWrite(_PIN_, _LEVEL_); report(_LEVEL_); delay(_MS_); } while(false)
+    pinMode(pin, mode);
 
-  void go() const {
+    m1 = millis();
 
-    if (ms == 0) {
-
-      pinstate_t state = digitalRead(pin);
-      report(state);
-      digitalWrite(pin, not state);
-
-    }
-    else {
-
-      SETPIN(pin,LOW ,ms);
-      SETPIN(pin,HIGH,ms);
-      SETPIN(pin,LOW ,ms);
-      SETPIN(pin,HIGH,ms);
+    if (mode == OUTPUT) {
+      s0 = s;
+      write(s);
+    } else {
+      s0 = get();
+      read();
     }
   }
-};
 
-/*
- * analog/digital sensors
- */
-
-struct sensor {
-
-  enum mode_t {
-    ANALOG,
-    DIGITAL
-  };
-
-  uint8_t pin;
-  mode_t mode;
-  const char *command;
-  int16_t state;
-  bool pullup;
-
-  sensor(uint8_t my_pin, mode_t my_mode, const char *my_command, bool my_pullup = false) :
-  pin(my_pin), mode(my_mode), command(my_command), pullup(my_pullup)
-  {
-    if(mode == DIGITAL)
-      pinMode(pin, pullup ? INPUT_PULLUP : INPUT);
+  int get() {
+    return (analog ? analogRead : digitalRead)(pin);
   }
 
-  void update() {
-    state = (mode == ANALOG ? analogRead : digitalRead)(pin);
-  }
-
-  void go() {
-
-    update();
-
-    Serial.print(":");
-Serial.print(mode == DIGITAL ? pullup ? "inverted" : "digital" :
-    "analog");
-    Serial.print(" ");
-
-    if (mode == ANALOG)
-      Serial.print((float)state / 1023.0, 2);
+  int set(int s) {
+    if (analog)
+      analogWrite(pin, s);
     else
-      Serial.print(state == HIGH ? "HI" : "LO");
+      digitalWrite(pin, s);
+    return s;
+  }
 
-    Serial.print(" ");
-    Serial.print(command);
+  int dm() {
+    return ds() == 0 ? m0 - m1 : dm0;
+  }
 
-    Serial.println("");
+  int push(int s) {
+
+    s1 = s0;
+    s0 = s;
+
+    m0 = millis();
+
+    if (ds() != 0) {
+      dm0 = m0 - m1;
+      m1 = m0;
+    }
+
+    return ds();
+  }
+
+  int read() {
+    return push(get());
+  }
+
+  int write(int s) {
+    return push(set(s));
+  }
+
+  int step() {
+     return mode == OUTPUT ? write(s0) : read();
   }
 };
 
-/*
- * global variables
- */
-
-struct relay relays[] = {
-  relay(12,  50, "doors lock"  ),
-  relay( 8,  50, "doors unlock"),
+enum port_name {
+   port_fault     = 2,
+   port_emergency = 4,
+   port_ignition  = 5,
+   port_unlock    = 8,
+   port_lock      = 12,
+   port_battery   = A0,
 };
 
-relay& emergency_unlock_relay = relays[1];
-
-const int fault_pin = 2;
-const int backdoor_pin = 4;
-
-const uint8_t relays_sz = sizeof(relays) / sizeof(*relays);
-
-struct sensor sensors[] = {
-
-  sensor(A0, sensor::ANALOG, "sensor battery"),
-  sensor(A1, sensor::ANALOG, "sensor oxygen" ),
-  sensor(A2, sensor::ANALOG, "sensor coolant"),
-  sensor(A3, sensor::ANALOG, "sensor rpm"    ),
-  sensor(A4, sensor::ANALOG, "sensor oil"    ),
-  sensor(A5, sensor::ANALOG, "sensor map"    ),
-
-  sensor(fault_pin   , sensor::DIGITAL, "sensor fault"   , true),
-  sensor(backdoor_pin, sensor::DIGITAL, "sensor backdoor", true),
-
-  sensor( 5, sensor::DIGITAL, "sensor acc"     ),
-  sensor( 6, sensor::DIGITAL, "sensor ignition"),
-  sensor( 9, sensor::DIGITAL, "sensor door"    ),
-  sensor(10, sensor::DIGITAL, "sensor choke"   ),
-  sensor(11, sensor::DIGITAL, "sensor 3rd"     ),
+struct port ports[] = {
+  port(port_fault    , INPUT_PULLUP             ),
+  port(port_emergency, INPUT_PULLUP             ),
+  port(port_ignition , INPUT                    ),
+  port(port_unlock   , OUTPUT      , false, HIGH),
+  port(port_lock     , OUTPUT      , false, HIGH),
+  port(port_battery  , INPUT       , true       ),
 };
 
-const uint8_t sensors_sz = sizeof(sensors) / sizeof(*sensors);
+const unsigned int ports_n = sizeof(ports) / sizeof(*ports);
+
+// SENSORS, RELAYS, SWITCHES
+// =========================
+// battery, oxygen, coolant,
+// rpm, oil, map, acc, ign,
+// doors, seat belts, choke,
+// 2nd, 3rd, brake
 
 linebuf buf;
-
-bool get_emergency_unlock_state() {
-  return digitalRead(backdoor_pin) or not digitalRead(fault_pin);
-}
-
-bool emergency_unlock_state_prev;
 
 void version() {
   Serial.println("");
@@ -243,41 +206,11 @@ void help() {
 
 void setup() {
 
-  Serial.begin(57600);
+  Serial.begin(19200);
 
   delay(250);
 
-  emergency_unlock_state_prev = get_emergency_unlock_state();
-
   version();
-}
-
-void fault_lockout() {
-  if(digitalRead(fault_pin) == LOW) {
-    sensors[fault_pin].go();
-    Serial.println("lockout 500ms");
-    delay(500);
-  }
-}
-
-#define LEVELNAME(X) (((X) == LOW) ? "LO" : "HI")
-#define EDGENAME(X) (((X) == LOW) ? "RISE" : "FALL")
-
-void edge_detect() {
-
-  if(get_emergency_unlock_state() != emergency_unlock_state_prev) {
-
-    Serial.print(":edge ");
-    Serial.print(emergency_unlock_state_prev == LOW ? "+" : "-");
-    Serial.print(" logic emergency");
-    Serial.println("");
-
-    if(emergency_unlock_state_prev == LOW)
-      emergency_unlock_relay.go();
-
-    emergency_unlock_state_prev = not emergency_unlock_state_prev;
-
-  }
 }
 
 void buffer_handler() {
@@ -290,35 +223,13 @@ void buffer_handler() {
 
       help();
 
-    }
-    else if (buf.match("version")) {
+    } else if (buf.match("version")) {
 
       version();
 
-    }
-    else if (buf.match("sensors")) {
-
-      for (uint8_t n = 0; n < sensors_sz; n++)
-        sensors[n].go();
-
-    }
-    else {
+    } else {
 
       bool done = false;
-
-      for (uint8_t n = 0; not done and n < relays_sz; n++) {
-        if (buf.match(relays[n].command)) {
-          relays[n].go();
-          done = true;
-        }
-      }
-
-      for (uint8_t n = 0; not done and n < sensors_sz; n++) {
-        if (buf.match(sensors[n].command)) {
-          sensors[n].go();
-          done = true;
-        }
-      }
 
       if (not done) {
         Serial.print("ERROR: \"");
@@ -333,8 +244,6 @@ void buffer_handler() {
 }
 
 void loop() {
-  fault_lockout();
-  edge_detect();
   buffer_handler();
 }
 
