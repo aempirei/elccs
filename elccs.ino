@@ -74,6 +74,8 @@ struct linebuf {
 
 struct port {
 
+	const char *name;
+
 	uint8_t pin;
 	uint16_t mode;
 
@@ -99,7 +101,7 @@ struct port {
 		Serial.print(x, b);
 	}
 
-	port(int my_pin, int my_mode, bool my_analog = false, int s = LOW) : pin(my_pin), mode(my_mode), analog(my_analog), active(true) {
+	port(const char *my_name, int my_pin, int my_mode, bool my_analog = false, int s = LOW) : name(my_name), pin(my_pin), mode(my_mode), analog(my_analog), active(true) {
 
 		pinMode(pin, mode);
 
@@ -116,7 +118,8 @@ struct port {
 
 	void status(const char *msg = NULL) {
 
-		Serial.print(";");
+		Serial.print(":");
+		Serial.print(name);
 
 		term("PIN"   , pin   , DEC);
 		term("ACTIVE", active, DEC);
@@ -158,7 +161,11 @@ struct port {
 		if (ds() != 0) {
 			dm0 = m0 - m1;
 			m1 = m0;
+
+			if(not analog)
+				status();
 		}
+
 
 		return ds();
 	}
@@ -168,15 +175,31 @@ struct port {
 	}
 
 	int write(int s) {
-		return push(set(s));
+		 return push(set(s));
+	}
+
+	int toggle() {
+		return write(not s0);
 	}
 
 	int step() {
 		return mode == OUTPUT ? write(s0) : read();
 	}
+
+	void pattern(int *xs, const char *msg) {
+
+		do {
+			write(*xs++);
+			delay(*xs);
+		} while(*xs++ > 0);
+
+		step();
+
+		status(msg);
+	}
 };
 
-enum port_pin : uint8_t {
+enum port_pin {
 	port_fault_pin     = 2,
 	port_third_pin     = 3,
 	port_emergency_pin = 4,
@@ -196,22 +219,22 @@ enum port_pin : uint8_t {
 };
 
 port ports[] = {
-	port(port_fault_pin    , INPUT_PULLUP             ),
-	port(port_third_pin    , INPUT_PULLUP             ),
-	port(port_emergency_pin, INPUT_PULLUP             ),
-	port(port_ignition_pin , INPUT_PULLUP             ),
-	port(port_acc_pin      , INPUT_PULLUP             ),
-	port(port_rpm_pin      , INPUT_PULLUP             ),
+	port("FAULT"    , port_fault_pin    , INPUT_PULLUP             ),
+	port("3RD"      , port_third_pin    , INPUT_PULLUP             ),
+	port("EMERGENCY", port_emergency_pin, INPUT_PULLUP             ),
+	port("IGNITION" , port_ignition_pin , INPUT_PULLUP             ),
+	port("ACC"      , port_acc_pin      , INPUT_PULLUP             ),
+	port("RPM"      , port_rpm_pin      , INPUT_PULLUP             ),
 
-	port(port_unlock_pin   , OUTPUT      , false, HIGH),
-	port(port_lock_pin     , OUTPUT      , false, HIGH),
+	port("UNLOCK"   , port_unlock_pin   , OUTPUT      , false, HIGH),
+	port("LOCK"     , port_lock_pin     , OUTPUT      , false, HIGH),
 
-	port(port_battery_pin  , INPUT       , true       ),
-	port(port_oxygen_pin   , INPUT       , true       ),
-	port(port_coolant_pin  , INPUT       , true       ),
-	port(port_oil_pin      , INPUT       , true       ),
-	port(port_map_pin      , INPUT       , true       ),
-	port(port_light_pin    , INPUT       , true       ),
+	port("BATTERY"  , port_battery_pin  , INPUT       , true       ),
+	port("OXYGEN"   , port_oxygen_pin   , INPUT       , true       ),
+	port("COOLANT"  , port_coolant_pin  , INPUT       , true       ),
+	port("OIL"      , port_oil_pin      , INPUT       , true       ),
+	port("MAP"      , port_map_pin      , INPUT       , true       ),
+	port("LIGHT"    , port_light_pin    , INPUT       , true       ),
 };
 
 port& port_fault     = ports[0];
@@ -242,6 +265,11 @@ const unsigned int ports_n = sizeof(ports) / sizeof(*ports);
 
 linebuf buf;
 
+void status() {
+	for(unsigned int n = 0; n < ports_n; n++)
+		ports[n].status();
+}
+
 void version() {
 	Serial.println("");
 	Serial.println("*************************************");
@@ -264,79 +292,33 @@ void help() {
 	Serial.println("");
 }
 
-void setup() {
+int pattern_servo[] = { LOW, 100, HIGH, 100, LOW, 100, HIGH, 0 };
 
-	Serial.begin(115200);
-
-	delay(500);
-
-	version();
-}
-
-void buffer_handler() {
-
-	buf.update();
-
-	if (buf.is_ready()) {
-
-		if (buf.match("help")) {
-
-			help();
-
-		} else if (buf.match("version")) {
-
-			version();
-
-		} else {
-
-			bool done = false;
-
-			if (not done) {
-				Serial.print("ERROR: \"");
-				Serial.print(buf.line);
-				Serial.print("\" unknown command");
-				Serial.println("");
-			}
-		}
-
-		buf.clear();
+void port_third_handler(struct port& p) {
+	if (p.active and p.ds() != 0) {
 	}
 }
 
-void port_third_handler(struct port& p) {
-
-	if (p.active and p.ds() != 0)
-		p.status("3rd switch triggered");
-}
-
 void port_rpm_handler(struct port& p) {
-
-	if (p.active and p.ds() != 0)
-		p.status("rpm switch triggered");
+	if (p.active and p.ds() != 0) {
+	}
 }
 
 void port_acc_handler(struct port& p) {
-
-	if (p.active and p.ds() != 0)
-		p.status("acc switch triggered");
+	if (p.active and p.ds() != 0) {
+	}
 }
 
 void port_ignition_handler(struct port& p) {
-
-	// deactivate emergency port on ignition rising edge
-	// activate emergency port on ignition falling edge
-
 	if (p.active and p.ds() != 0) {
-		p.status("ignition switch triggered");
+		// deactivate emergency port on ignition rising edge
+		// activate emergency port on ignition falling edge
 	}
 }
 
 void port_fault_handler(port& p) {
-
-	// trigger fault on edge detect
-
 	if (p.active and p.ds() != 0) {
-		p.status("fault switch level change");
+		// trigger fault on edge detect
 	}
 }
 
@@ -349,32 +331,15 @@ void port_emergency_handler(port& p) {
 
 		if (p.s0 == LOW and p.ds() == 0 and p.dm() >= 3000) {
 			p.active = false;
-			p.status("emergency unlock switch triggered");
-
-			port_unlock.write(LOW);
-			port_unlock.status();
-
-			delay(100);
-
-			port_unlock.write(HIGH);
-			port_unlock.status();
-
-			delay(100);
-
-			port_unlock.write(LOW);
-			port_unlock.status();
-
-			delay(100);
-
-			port_unlock.write(HIGH);
-			port_unlock.status();
+			p.status("emergency triggered");
+			port_unlock.pattern(pattern_servo, "unlock issued");
 		}
 
 	} else {
 
 		if (p.ds() > 0) {
 			p.active = true;
-			p.status("emergency unlock switch reactivated");
+			p.status("emergency trigger reactivated");
 		}
 
 	}
@@ -399,7 +364,58 @@ void port_handler(port& p) {
 
 }
 
+void buffer_handler() {
+
+	buf.update();
+
+	if (buf.is_ready()) {
+
+		if (buf.match("help")) {
+
+			help();
+
+		} else if (buf.match("version")) {
+
+			version();
+
+		} else if (buf.match("lock")) {
+
+			port_lock.pattern(pattern_servo, "lock issued");
+
+		} else if (buf.match("unlock")) {
+
+			port_unlock.pattern(pattern_servo, "unlock issued");
+
+		} else if (buf.match("status")) {
+
+			status();
+
+		} else {
+
+			bool done = false;
+
+			if (not done) {
+				Serial.print("ERROR: \"");
+				Serial.print(buf.line);
+				Serial.print("\" unknown command");
+				Serial.println("");
+			}
+		}
+
+		buf.clear();
+	}
+}
+
 unsigned int idx = 0;
+
+void setup() {
+
+	Serial.begin(115200);
+
+	delay(500);
+
+	version();
+}
 
 void loop() {
 
@@ -408,6 +424,3 @@ void loop() {
 
 	++idx %= ports_n;
 }
-
-
-
