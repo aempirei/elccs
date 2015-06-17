@@ -75,8 +75,8 @@ struct linebuf {
 
 struct port {
 
-  int pin;
-  int mode;
+  uint8_t pin;
+  uint16_t mode;
 
   bool analog;
 
@@ -91,6 +91,13 @@ struct port {
 
   int ds() {
     return s0 - s1;
+  }
+
+  template <typename T, typename U> void term(const char *key, T x, U b) {
+    Serial.print(" ");
+    Serial.print(key);
+    Serial.print("=");
+    Serial.print(x, b);
   }
 
   port(int my_pin, int my_mode, bool my_analog = false, int s = LOW) : pin(my_pin), mode(my_mode), analog(my_analog), active(true) {
@@ -108,14 +115,22 @@ struct port {
     }
   }
 
-  void status() {
-    Serial.print("; PIN ");
-    Serial.print(pin, DEC);
-    Serial.print(active ? " ON" : " --");
-    Serial.print(s0 == LOW ? " LO" : " HI");
-    Serial.print(ds() < 0 ? " FALL " : ds() > 0 ? " RISE " : " ---- ");
-    Serial.print(dm(), DEC);
-    Serial.println(" MS");
+  void status(const char *msg = NULL) {
+
+    Serial.print(";");
+
+    term("PIN"   , pin   , DEC);
+    term("ACTIVE", active, DEC);
+    term("S"     , s0    , DEC);
+    term("DS"    , ds()  , DEC);
+    term("DM"    , dm()  , DEC);
+
+    if (msg != NULL) {
+      Serial.print(" :");
+      Serial.print(msg);
+    }
+
+    Serial.println("");
   }
 
   int get() {
@@ -162,23 +177,30 @@ struct port {
   }
 };
 
-enum port_name {
-  port_fault     = 2,
-  port_emergency = 4,
-  port_ignition  = 5,
-  port_unlock    = 8,
-  port_lock      = 12,
-  port_battery   = A0,
+enum port_pin : uint8_t {
+  port_fault_pin     = 2,
+  port_emergency_pin = 4,
+  port_ignition_pin  = 5,
+  port_unlock_pin    = 8,
+  port_lock_pin      = 12,
+  port_battery_pin   = A0
 };
 
-struct port ports[] = {
-  port(port_fault    , INPUT_PULLUP             ),
-  port(port_emergency, INPUT_PULLUP             ),
-  port(port_ignition , INPUT                    ),
-  port(port_unlock   , OUTPUT      , false, HIGH),
-  port(port_lock     , OUTPUT      , false, HIGH),
-  port(port_battery  , INPUT       , true       ),
+port ports[] = {
+  port(port_fault_pin    , INPUT_PULLUP             ),
+  port(port_emergency_pin, INPUT_PULLUP             ),
+  port(port_ignition_pin , INPUT_PULLUP             ),
+  port(port_unlock_pin   , OUTPUT      , false, HIGH),
+  port(port_lock_pin     , OUTPUT      , false, HIGH),
+  port(port_battery_pin  , INPUT       , true       ),
 };
+
+port& port_fault     = ports[0];
+port& port_emergency = ports[1];
+port& port_ignition  = ports[2];
+port& port_unlock    = ports[3];
+port& port_lock      = ports[4];
+port& port_battery   = ports[5];
 
 const unsigned int ports_n = sizeof(ports) / sizeof(*ports);
 
@@ -210,10 +232,6 @@ void help() {
   Serial.println("");
   Serial.println("  help");
   Serial.println("  version");
-  Serial.println("  doors {lock|unlock}");
-  Serial.println("  sensor {oxygen|coolant|rpm|oil|map}");
-  Serial.println("  sensor {fault|backdoor|acc|ignition|door|choke|3rd}");
-  Serial.println("  sensors");
   Serial.println("");
 }
 
@@ -256,29 +274,78 @@ void buffer_handler() {
   }
 }
 
-void port_handler(struct port& p) {
+void port_ignition_handler(struct port& p) {
+
+  // deactivate emergency port on ignition rising edge
+  // activate emergency port on ignition falling edge
+
+  if (p.active and p.ds() != 0)
+    p.status("ignition switch triggered");
+
+}
+
+void port_fault_handler(port& p) {
+
+  // trigger fault on edge detect
+  // deactivate emergency port on falling edge
+  // activate emergency port on rising edge.
+
+  if (p.active and p.ds() != 0)
+    p.status("fault switch level change");
+
+}
+
+void port_emergency_handler(port& p) {
+
+  // when emergency port is active if level is LOW  for 3000ms, trigger unlock port and deactivate emergency port
+  // activate emergency port on rising edge when inactive
+
+  if (p.active) {
+
+    if (p.s0 == LOW and p.ds() == 0 and p.dm() >= 3000) {
+      p.active = false;
+      p.status("emergency unlock switch triggered");
+
+      port_unlock.write(LOW);
+      port_unlock.status();
+
+      delay(100);
+
+      port_unlock.write(HIGH);
+      port_unlock.status();
+
+      delay(100);
+
+      port_unlock.write(LOW);
+      port_unlock.status();
+
+      delay(100);
+
+      port_unlock.write(HIGH);
+      port_unlock.status();
+    }
+
+  } else {
+
+    if (p.ds() > 0) {
+      p.active = true;
+      p.status("emergency unlock switch reactivated");
+    }
+
+  }
+
+}
+
+void port_handler(port& p) {
 
   p.step();
 
-  if (p.pin == port_emergency) {
-
-    if (p.active) {
-
-      if (p.s0 == LOW and p.ds() == 0 and p.dm() >= 3000) {
-        p.active = false;
-        p.status();
-      }
-
-    } else {
-
-      if (p.ds() > 0) {
-        p.active = true;
-        p.status();
-      }
-
-    }
+  switch (p.pin) {
+    case port_emergency_pin: port_emergency_handler(p); break;
+    case port_ignition_pin : port_ignition_handler (p); break;
+    case port_fault_pin    : port_fault_handler    (p); break;
   }
-  
+
 
 }
 
@@ -288,8 +355,9 @@ void loop() {
 
   port_handler(ports[idx]);
   buffer_handler();
-  
+
   ++idx %= ports_n;
 }
+
 
 
