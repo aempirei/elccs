@@ -1,4 +1,3 @@
-#include <WProgram.h>
 /*************************************
  * - El Camino Control System v1.0 - *
  * - Copyright(c) 2015, 256 LLC    - *
