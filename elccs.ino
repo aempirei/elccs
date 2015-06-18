@@ -14,7 +14,7 @@
 
 struct linebuf {
 
-	static const uint8_t line_max_sz = 80;
+	static const uint8_t line_max_sz = 64;
 	static const char EOL = '\n';
 	static const char NUL = '\0';
 
@@ -57,8 +57,7 @@ struct linebuf {
 				line[--line_sz] = NUL;
 				locked = true;
 
-			}
-			else if (full()) {
+			} else if (full()) {
 
 				line[line_sz] = NUL;
 				locked = true;
@@ -365,11 +364,10 @@ void port_handler(port& p) {
 		case port_fault_pin    : port_fault_handler    (p); break;
 		case port_third_pin    : port_third_handler    (p); break;
 
-
 	}
-
-
 }
+
+bool was_full = false;
 
 void buffer_handler() {
 
@@ -377,10 +375,16 @@ void buffer_handler() {
 
 	if (buf.is_ready()) {
 
-		if (buf.match("nop")) {
-
+		if(buf.full()) {
+			was_full = true;
+			Serial.println("error::buffer full");
+		} else if (was_full) {
+			was_full = false;
+			Serial.println("warning::buffer ignored");
+		} else if (buf.match("")) {
 			// NOP
-
+		} else if (buf.match("nop")) {
+			// NOP
 		} else if (buf.match("ping")) {
 
 			Serial.println("return::pong");
