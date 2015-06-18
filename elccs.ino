@@ -287,8 +287,15 @@ void help() {
 	Serial.println("* - Command Help - *");
 	Serial.println("********************");
 	Serial.println("");
-	Serial.println("  help");
-	Serial.println("  version");
+
+	Serial.println("  lock     lock doors");
+	Serial.println("  unlock   unlock doors");
+	Serial.println("  status   report status of all devices");
+	Serial.println("  ping     request ping response");
+	Serial.println("  nop      no operation");
+	Serial.println("  version  display system version information");
+	Serial.println("  help     display this help screen");
+	
 	Serial.println("");
 }
 
@@ -370,7 +377,15 @@ void buffer_handler() {
 
 	if (buf.is_ready()) {
 
-		if (buf.match("help")) {
+		if (buf.match("nop")) {
+
+			// NOP
+
+		} else if (buf.match("ping")) {
+
+			Serial.println("return::pong");
+
+		} else if (buf.match("help")) {
 
 			help();
 
@@ -394,11 +409,14 @@ void buffer_handler() {
 
 			bool done = false;
 
+			//
+			// do things...
+			//
+
 			if (not done) {
-				Serial.print("ERROR: \"");
+				Serial.print("error::");
 				Serial.print(buf.line);
-				Serial.print("\" unknown command");
-				Serial.println("");
+				Serial.println(" command unknown");
 			}
 		}
 
