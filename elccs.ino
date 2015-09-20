@@ -298,7 +298,12 @@ void help() {
 	Serial.println("");
 }
 
-int pattern_servo[] = { LOW, 100, HIGH, 100, LOW, 100, HIGH, 0 };
+int pattern_servo[] = {
+	LOW, 75, HIGH, 75,
+	LOW, 75, HIGH, 75,
+	LOW, 75, HIGH, 75,
+	LOW, 75, HIGH, 0
+};
 
 void port_third_handler(struct port& p) {
 	if (p.active and p.ds() != 0) {
@@ -430,6 +435,20 @@ void buffer_handler() {
 
 unsigned int idx = 0;
 
+/*
+
+	/////////////////////////
+	// interrupt handler code
+	/////////////////////////
+
+	volatile int qstate = LOW;
+
+	void intvec() {
+		qstate = not qstate;
+	}
+
+*/
+
 void setup() {
 
 	Serial.begin(115200);
@@ -437,6 +456,9 @@ void setup() {
 	delay(500);
 
 	version();
+
+	// pinMode(2, OUTPUT);
+	// attachInterrupt(0, intvec, FALLING);
 }
 
 void loop() {
