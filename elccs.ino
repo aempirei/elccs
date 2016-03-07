@@ -209,6 +209,11 @@ enum port_pin {
 	port_unlock_pin    = 8,
 	port_lock_pin      = 12,
 
+	port_lwindowp_pin  = 2,
+	port_lwindowm_pin  = 4,
+	port_rwindowp_pin  = 7,
+	port_rwindowm_pin  = 8,
+
 	port_battery_pin   = A0,
 	port_oxygen_pin    = A1,
 	port_coolant_pin   = A2,
@@ -234,6 +239,12 @@ port ports[] = {
 	port("OIL"      , port_oil_pin      , INPUT       , true       ),
 	port("MAP"      , port_map_pin      , INPUT       , true       ),
 	port("LIGHT"    , port_light_pin    , INPUT       , true       ),
+
+	port("LWINDOWP" , port_lwindowp_pin , OUTPUT      , false, HIGH),
+	port("LWINDOWM" , port_lwindowm_pin , OUTPUT      , false, HIGH),
+	port("RWINDOWP" , port_rwindowp_pin , OUTPUT      , false, HIGH),
+	port("RWINDOWM" , port_rwindowm_pin , OUTPUT      , false, HIGH),
+
 };
 
 port& port_fault     = ports[0];
@@ -252,6 +263,11 @@ port& port_coolant   = ports[10];
 port& port_oil       = ports[11];
 port& port_map       = ports[12];
 port& port_light     = ports[13];
+
+port& port_lwindowp  = ports[14];
+port& port_lwindowm  = ports[15];
+port& port_rwindowp  = ports[16];
+port& port_rwindowm  = ports[17];
 
 const unsigned int ports_n = sizeof(ports) / sizeof(*ports);
 
@@ -287,6 +303,10 @@ void help() {
 	Serial.println("********************");
 	Serial.println("");
 
+	Serial.println("  left window up");
+	Serial.println("  left window down");
+	Serial.println("  right window up");
+	Serial.println("  right window down");
 	Serial.println("  lock     lock doors");
 	Serial.println("  unlock   unlock doors");
 	Serial.println("  status   report status of all devices");
@@ -303,6 +323,10 @@ int pattern_servo[] = {
 	LOW, 75, HIGH, 75,
 	LOW, 75, HIGH, 75,
 	LOW, 75, HIGH, 0
+};
+
+int pattern_window[] = {
+	LOW, 4000, HIGH, 0
 };
 
 void port_third_handler(struct port& p) {
@@ -368,7 +392,6 @@ void port_handler(port& p) {
 		case port_rpm_pin      : port_rpm_handler      (p); break;
 		case port_fault_pin    : port_fault_handler    (p); break;
 		case port_third_pin    : port_third_handler    (p); break;
-
 	}
 }
 
@@ -409,6 +432,22 @@ void buffer_handler() {
 		} else if (buf.match("unlock")) {
 
 			port_unlock.pattern(pattern_servo, "unlock issued");
+
+		} else if (buf.match("left window up")) {
+
+			port_lwindowp.pattern(pattern_window, "left window up issued");
+
+		} else if (buf.match("left window down")) {
+
+			port_lwindowm.pattern(pattern_window, "left window down issued");
+
+		} else if (buf.match("right window up")) {
+
+			port_rwindowp.pattern(pattern_window, "right window up issued");
+
+		} else if (buf.match("right window down")) {
+
+			port_rwindowm.pattern(pattern_window, "right window down issued");
 
 		} else if (buf.match("status")) {
 
