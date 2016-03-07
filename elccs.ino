@@ -203,16 +203,16 @@ enum port_pin {
 	port_third_pin     = 3,
 	port_emergency_pin = 4,
 	port_ignition_pin  = 5,
-	port_acc_pin       = 6,
-	port_rpm_pin       = 7,
+	port_acc_pin       = 9,
+	port_rpm_pin       = 10,
 
 	port_unlock_pin    = 8,
 	port_lock_pin      = 12,
 
 	port_lwindowp_pin  = 2,
 	port_lwindowm_pin  = 4,
-	port_rwindowp_pin  = 7,
-	port_rwindowm_pin  = 8,
+	port_rwindowp_pin  = 6,
+	port_rwindowm_pin  = 7,
 
 	port_battery_pin   = A0,
 	port_oxygen_pin    = A1,
