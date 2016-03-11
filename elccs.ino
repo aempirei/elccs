@@ -7,31 +7,58 @@
 #include <stdint.h>
 #include <ctype.h>
 #include <string.h>
+#include <stdlib.h>
 
 struct linebuf;
 
+struct command;
 struct port;
 
 struct adc_port;
 struct pulldown_port;
 struct pullup_port;
+struct counting_port;
 
 struct pwm_port;
 struct digital_output_port;
 
-struct command;
+void attach_frequency_counter(const port *);
+void detach_frequency_counter(const port *);
 
-port *ports;
-command *commands;
+template <typename T> int compare(const void *a, const void *b) {
+		return strcasecmp(((const T *)a)->name, ((const T *)b)->name);
+}
+
+template <typename T> int search(const void *key, const void *member) {
+		return strcasecmp((const char *)key, ((const T *)member)->name);
+
+}
 
 struct command {
-	typedef void command_fn();
+
+	using function_type = void ();
+
 	const char *name;
 	const char *help;
-	command_fn *f;
-	command(const char *my_name, const char *my_help, command_fn *my_f) : name(my_name), help(my_help), f(my_f) {
-	}
+	function_type *f;
+
+	command(const char *my_name, const char *my_help, function_type *my_f) : name(my_name), help(my_help), f(my_f) { }
 };
+
+void cmd_left_up();
+void cmd_left_down();
+void cmd_right_up();
+void cmd_right_down();
+void cmd_all_up();
+void cmd_all_down();
+void cmd_lock();
+void cmd_unlock();
+void cmd_status();
+void cmd_ping();
+void cmd_uptime();
+void cmd_nop();
+void cmd_version();
+void cmd_help();
 
 /*
  * linebuf - line buffer for serial device
@@ -64,10 +91,6 @@ struct linebuf {
 
 		bool is_ready() const {
 				return locked;
-		}
-
-		bool match(const char *s) const {
-				return is_ready() ? (strcasecmp(line, s) == 0) : false;
 		}
 
 		void update() {
@@ -138,7 +161,7 @@ struct port {
 				}
 		}
 
-		void status(const char *msg = NULL) {
+		void status(const char *msg = nullptr) {
 
 				Serial.print(":");
 				Serial.print(name);
@@ -148,7 +171,7 @@ struct port {
 				term("DS"    , ds()  , DEC);
 				term("DM"    , dm()  , DEC);
 
-				if (msg != NULL) {
+				if (msg != nullptr) {
 						Serial.print(" :");
 						Serial.print(msg);
 				}
@@ -221,45 +244,38 @@ struct port {
 };
 
 struct pwm_port : port {
-		using port::port;
-		pwm_port(const char *my_name, int my_pin, int s) : pwm_port(my_name, my_pin, OUTPUT, true, s) { }
+		pwm_port(const char *my_name, int my_pin, int s) : port(my_name, my_pin, OUTPUT, true, s) { }
 };
 
 struct digital_output_port : port {
-		using port::port;
-		digital_output_port(const char *my_name, int my_pin, int s) : digital_output_port(my_name, my_pin, OUTPUT, false, s) { }
+		digital_output_port(const char *my_name, int my_pin, int s) : port(my_name, my_pin, OUTPUT, false, s) { }
 };
 
 struct adc_port : port {
-		using port::port;
-		adc_port(const char *my_name, int my_pin) : adc_port(my_name, my_pin, INPUT, true, 0) { }
+		adc_port(const char *my_name, int my_pin) : port(my_name, my_pin, INPUT, true, 0) { }
 };
 
 struct pulldown_port : port {
-		using port::port;
-		pulldown_port(const char *my_name, int my_pin) : pulldown_port(my_name, my_pin, INPUT, false, LOW) { }
+		pulldown_port(const char *my_name, int my_pin) : port(my_name, my_pin, INPUT, false, LOW) { }
 };
 
 struct pullup_port : port {
-		using port::port;
-		pullup_port(const char *my_name, int my_pin) : pullup_port(my_name, my_pin, INPUT_PULLUP, false, HIGH) { }
+		pullup_port(const char *my_name, int my_pin) : port(my_name, my_pin, INPUT_PULLUP, false, HIGH) { }
 };
 
+struct counting_port : port {
+		counting_port(const char *my_name, int my_pin) : port(my_name, my_pin, INPUT, false, LOW) {
+			attach_frequency_counter(this);
+		}
+		~counting_port() {
+			detach_frequency_counter(this);
+		}
+};
+
+
+linebuf buf;
+
 enum pin {
-
-		pin_emergency = 3,
-		pin_ignition  = 5,
-		pin_acc       = 9,
-		pin_rpm       = 10,
-
-		pin_unlock    = 8,
-		pin_lock      = 12,
-
-		pin_leftup    = 2,
-		pin_leftdown  = 4,
-		pin_rightup   = 6,
-		pin_rightdown = 7,
-
 		pin_battery   = A0,
 		pin_oxygen    = A1,
 		pin_coolant   = A2,
@@ -268,7 +284,50 @@ enum pin {
 		pin_light     = A5
 };
 
-linebuf buf;
+port ports[] = {
+
+	pullup_port("EMERGENCY", 3),
+
+	pulldown_port("IGN", 5),
+	pulldown_port("ACC", 9),
+
+	counting_port("RPM", 10),
+
+	adc_port("BATTERY", A0),
+	adc_port("OXYGEN" , A1),
+	adc_port("COOLANT", A2),
+	adc_port("OIL"    , A3),
+	adc_port("MAP"    , A4),
+	adc_port("LIGHT"  , A5),
+
+	digital_output_port("L-UP"  ,  2, HIGH),
+	digital_output_port("L-DOWN",  4, HIGH),
+	digital_output_port("R-UP"  ,  6, HIGH),
+	digital_output_port("R-DOWN",  7, HIGH),
+	digital_output_port("LOCK"  ,  8, HIGH),
+	digital_output_port("UNLOCK", 12, HIGH),
+};
+
+constexpr size_t ports_n =  sizeof(ports) / sizeof(port);
+
+command commands[] = {
+		command("l-up"   , "raise left window"           , cmd_left_up   ),
+		command("l-down" , "lower left window"           , cmd_left_down ),
+		command("r-up"   , "raise right window"          , cmd_right_up  ),
+		command("r-down" , "lower right window"          , cmd_right_down),
+		command("up"     , "raise all windows"           , cmd_all_up    ),
+		command("down"   , "lower all windows"           , cmd_all_down  ),
+		command("lock"   , "lock all doors"              , cmd_lock      ),
+		command("unlock" , "unlock all doors"            , cmd_unlock    ),
+		command("status" , "report status of all devices", cmd_status    ),
+		command("ping"   , "request ping"                , cmd_ping      ),
+		command("uptime" , "display system uptime"       , cmd_uptime    ),
+		command("nop"    , "no operation"                , cmd_nop       ),
+		command("version", "display firmware information", cmd_version   ),
+		command("help"   , "display this help screen"    , cmd_help      ),
+};
+
+constexpr size_t commands_n = sizeof(commands) / sizeof(command);
 
 void cmd_uptime() {
 	Serial.print("RETURN::UPTIME=");
@@ -277,11 +336,12 @@ void cmd_uptime() {
 }
 
 void cmd_nop() {
+	Serial.println("RETURN::NOTHING");
 }
 
 void cmd_status() {
-	for(port *p = ports; p != NULL; p++)
-		p->status();
+	for(size_t n = 0; n < ports_n; n++)
+		ports[n].status();
 }
 
 void cmd_version() {
@@ -302,12 +362,12 @@ void cmd_help() {
 		Serial.println("********************");
 		Serial.write('\n');
 
-		for(command *cmd = commands; cmd != NULL; cmd++) {
+		for(size_t n = 0; n < commands_n; n++) {
 				Serial.print("  ");
-				Serial.print(cmd->name);
-				for(int n = 20 - strlen(cmd->name); n >= 0; n--)
+				Serial.print(commands[n].name);
+				for(int k = 10 - strlen(commands[n].name); k >= 0; k--)
 						Serial.write(' ');
-				Serial.println(cmd->help);
+				Serial.println(commands[n].help);
 		}
 
 		Serial.write('\n');
@@ -341,27 +401,24 @@ void cmd_ping() {
 		Serial.println("RETURN::PONG");
 }
 
-void ports_handler() {
-	for(port *p = ports; p != NULL; p++)
-		p->step();
+void update_ports() {
+		for(size_t n = 0; n < ports_n; n++)
+				ports[n].step();
 }
 
-void buffer_handler() {
+void update_buffer() {
 
 	buf.update();
 
 	if (buf.is_ready()) {
 
-		command *cmd = commands;
+		command *cmd = (command *)bsearch(buf.line, commands, commands_n, sizeof(command), search<command>);
 
-		while(cmd != NULL && strcasecmp(cmd->name, buf.line) != 0)
-			cmd++;
-
-		if(cmd != NULL) {
-			cmd->f();
-		} else {
+		if(cmd == nullptr) {
 				Serial.print("RETURN::ERROR=unknown-command,COMMAND=");
 				Serial.println(buf.line);
+		} else {
+			cmd->f();
 		}
 
 		buf.clear();
@@ -447,68 +504,31 @@ void port_emergency_handler(port& p) {
 	}
 
 }
-
-
-port ports[] = {
-
-	port("EMERGENCY", port_emergency_pin, INPUT_PULLUP             ),
-	port("IGNITION" , port_ignition_pin , INPUT_PULLUP             ),
-	port("ACC"      , port_acc_pin      , INPUT_PULLUP             ),
-	port("RPM"      , port_rpm_pin      , INPUT_PULLUP             ),
-
-	port("UNLOCK"   , port_unlock_pin   , OUTPUT      , false, HIGH),
-	port("LOCK"     , port_lock_pin     , OUTPUT      , false, HIGH),
-
-	port("BATTERY"  , port_battery_pin  , INPUT       , true       ),
-	port("COOLANT"  , port_coolant_pin  , INPUT       , true       ),
-	port("OIL"      , port_oil_pin      , INPUT       , true       ),
-	port("MAP"      , port_map_pin      , INPUT       , true       ),
-	port("LIGHT"    , port_light_pin    , INPUT       , true       ),
-
-	port("LWINDOWP" , port_lwindowp_pin , OUTPUT      , false, HIGH),
-	port("LWINDOWM" , port_lwindowm_pin , OUTPUT      , false, HIGH),
-	port("RWINDOWP" , port_rwindowp_pin , OUTPUT      , false, HIGH),
-	port("RWINDOWM" , port_rwindowm_pin , OUTPUT      , false, HIGH),
-};
 */
 
-command *commands = new command[14]{
-		new command("left-up"   , "raise left window"           , cmd_left_up),
-		new command("left-down" , "lower left window"           , cmd_left_down),
-		new command("right-up"  , "raise right window"          , cmd_right_up),
-		new command("right-down", "lower right window"          , cmd_right_down),
-		new command("all-up"    , "raise all windows"           , cmd_all_up),
-		new command("all-down"  , "lower all windows"           , cmd_all_down),
-		new command("lock"      , "lock all doors"              , cmd_lock),
-		new command("unlock"    , "unlock all doors"            , cmd_unlock),
-		new command("status"    , "report status of all devices", cmd_status),
-		new command("ping"      , "request ping"                , cmd_ping),
-		new command("uptime"    , "display system uptime"       , cmd_uptime),
-		new command("nop"       , "no operation"                , cmd_nop),
-		new command("version"   , "display firmware information", cmd_version),
-		new command("help"      , "display this help screen"    , cmd_help),
-		NULL
-};
+void attach_frequency_counter(const port *) {
+}
 
-
-void init() {
-
+void detach_frequency_counter(const port *) {
 }
 
 void setup() {
 
-	Serial.begin(38400);
+		qsort(ports, ports_n, sizeof(port), compare<port>);
+		qsort(commands, commands_n, sizeof(command), compare<command>);
 
-	delay(1000);
+		Serial.begin(115200);
 
-	init();
+		delay(1000);
 
-	cmd_version();
+		cmd_version();
+		cmd_status();
+		cmd_help();
 
-	// attachInterrupt(0, intvec, FALLING);
+		// attachInterrupt(0, intvec, FALLING);
 }
 
 void loop() {
-	ports_handler();
-	buffer_handler();
+	update_ports();
+	update_buffer();
 }
