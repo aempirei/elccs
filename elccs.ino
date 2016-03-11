@@ -210,9 +210,9 @@ enum port_pin {
 	port_lock_pin      = 12,
 
 	port_lwindowp_pin  = 2,
-	port_lwindowm_pin  = 4,
-	port_rwindowp_pin  = 6,
-	port_rwindowm_pin  = 7,
+	port_lwindowm_pin  = 6,
+	port_rwindowp_pin  = 7,
+	port_rwindowm_pin  = 4,
 
 	port_battery_pin   = A0,
 	port_oxygen_pin    = A1,
