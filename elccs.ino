@@ -25,14 +25,23 @@ struct digital_output_port;
 void attach_frequency_counter(const port *);
 void detach_frequency_counter(const port *);
 
-template <typename T> int compare(const void *a, const void *b) {
-		return strcasecmp(((const T *)a)->name, ((const T *)b)->name);
-}
+void cmd_left_up();
+void cmd_left_down();
+void cmd_right_up();
+void cmd_right_down();
+void cmd_all_up();
+void cmd_all_down();
+void cmd_lock();
+void cmd_unlock();
+void cmd_status();
+void cmd_uptime();
+void cmd_nop();
+void cmd_version();
+void cmd_help();
 
-template <typename T> int search(const void *key, const void *member) {
-		return strcasecmp((const char *)key, ((const T *)member)->name);
-
-}
+template <typename> int compare(const void *, const void *);
+template <typename> int is_named(const void *, const void *);
+template <typename T> T *lookup(const char *, T *, size_t);
 
 struct command {
 
@@ -45,26 +54,8 @@ struct command {
 	command(const char *my_name, const char *my_help, function_type *my_f) : name(my_name), help(my_help), f(my_f) { }
 };
 
-void cmd_left_up();
-void cmd_left_down();
-void cmd_right_up();
-void cmd_right_down();
-void cmd_all_up();
-void cmd_all_down();
-void cmd_lock();
-void cmd_unlock();
-void cmd_status();
-void cmd_ping();
-void cmd_uptime();
-void cmd_nop();
-void cmd_version();
-void cmd_help();
 
 void pattern(const int *, port **);
-
-/*
- * linebuf - line buffer for serial device
- */
 
 struct linebuf {
 
@@ -263,6 +254,8 @@ struct counting_port : port {
 };
 
 
+linebuf buf;
+
 void pattern(const int *xs, port **ys) {
 		do {
 			for(port **zs = ys; *zs != nullptr; zs++)
@@ -270,7 +263,6 @@ void pattern(const int *xs, port **ys) {
 			delay(*++xs);
 		} while(*xs++ > 0);
 }
-
 
 port ports[] = {
 
@@ -308,7 +300,6 @@ command commands[] = {
 		command("lock"   , "lock all doors"              , cmd_lock      ),
 		command("unlock" , "unlock all doors"            , cmd_unlock    ),
 		command("status" , "report status of all devices", cmd_status    ),
-		command("ping"   , "request ping"                , cmd_ping      ),
 		command("uptime" , "display system uptime"       , cmd_uptime    ),
 		command("nop"    , "no operation"                , cmd_nop       ),
 		command("version", "display firmware information", cmd_version   ),
@@ -317,14 +308,25 @@ command commands[] = {
 
 constexpr size_t commands_n = sizeof(commands) / sizeof(command);
 
+int pattern_door[] = {
+	LOW, 75, HIGH, 75,
+	LOW, 75, HIGH, 75,
+	LOW, 75, HIGH, 75,
+	LOW, 75, HIGH, 0
+};
+
+int pattern_window[] = {
+	LOW, 1500, HIGH, 0
+};
+
 void cmd_uptime() {
-	Serial.print("RETURN::UPTIME=");
+	Serial.print(":UPTIME MS=");
 	Serial.print(millis(), DEC);
 	Serial.write('\n');
 }
 
 void cmd_nop() {
-	Serial.println("RETURN::NOTHING");
+	Serial.println(":VOID");
 }
 
 void cmd_status() {
@@ -362,31 +364,69 @@ void cmd_help() {
 }
 
 void cmd_left_up() {
+		port **ys = {
+				lookup("L-UP", ports, ports_n),
+				nullptr
+		};
+		pattern(pattern_window, ys);
 }
 
 void cmd_left_down() {
+		port **ys = {
+				lookup("L-DOWN", ports, ports_n),
+				nullptr
+		};
+		pattern(pattern_window, ys);
 }
 
 void cmd_right_up() {
+		port **ys = {
+				lookup("R-UP", ports, ports_n),
+				nullptr
+		};
+		pattern(pattern_window, ys);
 }
 
 void cmd_right_down() {
+		port **ys = {
+				lookup("R-DOWN", ports, ports_n),
+				nullptr
+		};
+		pattern(pattern_window, ys);
 }
 
 void cmd_all_up() {
+		port **ys = {
+				lookup("L-UP", ports, ports_n),
+				lookup("R-UP", ports, ports_n),
+				nullptr
+		};
+		pattern(pattern_window, ys);
 }
 
 void cmd_all_down() {
+		port **ys = {
+				lookup("L-DOWN", ports, ports_n),
+				lookup("R-DOWN", ports, ports_n),
+				nullptr
+		};
+		pattern(pattern_window, ys);
 }
 
 void cmd_lock() {
+		port **ys = {
+				lookup("LOCK", ports, ports_n),
+				nullptr
+		};
+		pattern(pattern_door, ys);
 }
 
 void cmd_unlock() {
-}
-
-void cmd_ping() {
-		Serial.println("RETURN::PONG");
+		port **ys = {
+				lookup("UNLOCK", ports, ports_n),
+				nullptr
+		};
+		pattern(pattern_door, ys);
 }
 
 void process_ports() {
@@ -394,7 +434,17 @@ void process_ports() {
 				ports[n].step();
 }
 
-linebuf buf;
+template <typename T> int compare(const void *a, const void *b) {
+		return is_named<T>(((const T *)a)->name, b);
+}
+
+template <typename T> int is_named(const void *key, const void *member) {
+		return strcasecmp((const char *)key, ((const T *)member)->name);
+}
+
+template <typename T> T *lookup(const char *name, T *objects, size_t n) {
+	return (T *)bsearch(name, objects, n, sizeof(T), is_named<T>);
+}
 
 void process_buffer() {
 
@@ -402,10 +452,10 @@ void process_buffer() {
 
 	if (buf.is_ready()) {
 
-		command *cmd = (command *)bsearch(buf.line, commands, commands_n, sizeof(command), search<command>);
+		command *cmd = lookup(buf.line, commands, commands_n);
 
 		if(cmd == nullptr) {
-				Serial.print("RETURN::ERROR=unknown-command,COMMAND=");
+				Serial.print(":ERROR TYPE=unknown-command COMMAND=");
 				Serial.println(buf.line);
 		} else {
 			cmd->f();
@@ -417,59 +467,15 @@ void process_buffer() {
 
 /*
 
-	/////////////////////////
-	// interrupt handler code
-	/////////////////////////
+/////////////////////////
+// interrupt handler code
+/////////////////////////
 
-	volatile int qstate = LOW;
+volatile int qstate = LOW;
 
-	void intvec() {
-		qstate = not qstate;
-	}
-
-*/
-
-/*
-
-		} else if (buf.match("lock")) {
-
-			port_lock.pattern(pattern_servo, "lock issued");
-
-		} else if (buf.match("unlock")) {
-
-			port_unlock.pattern(pattern_servo, "unlock issued");
-
-		} else if (buf.match("left window up")) {
-
-			port_lwindowp.pattern(pattern_window, "left window up issued");
-
-		} else if (buf.match("left window down")) {
-
-			port_lwindowm.pattern(pattern_window, "left window down issued");
-
-		} else if (buf.match("right window up")) {
-
-			port_rwindowp.pattern(pattern_window, "right window up issued");
-
-		} else if (buf.match("right window down")) {
-
-			port_rwindowm.pattern(pattern_window, "right window down issued");
-
- */
-
-
-
-/*
-int pattern_servo[] = {
-	LOW, 75, HIGH, 75,
-	LOW, 75, HIGH, 75,
-	LOW, 75, HIGH, 75,
-	LOW, 75, HIGH, 0
-};
-
-int pattern_window[] = {
-	LOW, 4000, HIGH, 0
-};
+void intvec() {
+	qstate = not qstate;
+}
 
 void port_emergency_handler(port& p) {
 
@@ -492,8 +498,8 @@ void port_emergency_handler(port& p) {
 		}
 
 	}
-
 }
+
 */
 
 void attach_frequency_counter(const port *) {
