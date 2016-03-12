@@ -125,10 +125,13 @@ struct port {
 
 		unsigned long m0;
 		unsigned long m1;
-		long dm0;
 
 		int ds() {
 				return s0 - s1;
+		}
+
+		long dm() {
+			return m0 - m1;
 		}
 
 		template <typename T, typename U> void term(const char *key, T x, U b) {
@@ -139,12 +142,10 @@ struct port {
 		}
 
 		port(const char *my_name, int my_pin, int my_mode, bool my_analog, int s)
-				: name(my_name), pin(my_pin), mode(my_mode), analog(my_analog)
+				: name(my_name), pin(my_pin), mode(my_mode), analog(my_analog), m1(millis())
 		{
 
 				pinMode(pin, mode);
-
-				m1 = millis();
 
 				if (mode == OUTPUT) {
 						write(s);
@@ -184,10 +185,6 @@ struct port {
 				return s;
 		}
 
-		int dm() {
-				return ds() == 0 ? m0 - m1 : dm0;
-		}
-
 		int update(int s) {
 
 				s1 = s0;
@@ -196,7 +193,6 @@ struct port {
 				m0 = millis();
 
 				if (ds() != 0) {
-						dm0 = m0 - m1;
 						m1 = m0;
 
 						if(not analog)
@@ -364,7 +360,7 @@ void cmd_help() {
 }
 
 void cmd_left_up() {
-		port **ys = {
+		port *ys[] = {
 				lookup("L-UP", ports, ports_n),
 				nullptr
 		};
@@ -372,7 +368,7 @@ void cmd_left_up() {
 }
 
 void cmd_left_down() {
-		port **ys = {
+		port *ys[] = {
 				lookup("L-DOWN", ports, ports_n),
 				nullptr
 		};
@@ -380,7 +376,7 @@ void cmd_left_down() {
 }
 
 void cmd_right_up() {
-		port **ys = {
+		port *ys[] = {
 				lookup("R-UP", ports, ports_n),
 				nullptr
 		};
@@ -388,7 +384,7 @@ void cmd_right_up() {
 }
 
 void cmd_right_down() {
-		port **ys = {
+		port *ys[] = {
 				lookup("R-DOWN", ports, ports_n),
 				nullptr
 		};
@@ -396,7 +392,7 @@ void cmd_right_down() {
 }
 
 void cmd_all_up() {
-		port **ys = {
+		port *ys[] = {
 				lookup("L-UP", ports, ports_n),
 				lookup("R-UP", ports, ports_n),
 				nullptr
@@ -405,7 +401,7 @@ void cmd_all_up() {
 }
 
 void cmd_all_down() {
-		port **ys = {
+		port *ys[] = {
 				lookup("L-DOWN", ports, ports_n),
 				lookup("R-DOWN", ports, ports_n),
 				nullptr
@@ -414,7 +410,7 @@ void cmd_all_down() {
 }
 
 void cmd_lock() {
-		port **ys = {
+		port *ys[] = {
 				lookup("LOCK", ports, ports_n),
 				nullptr
 		};
@@ -422,7 +418,7 @@ void cmd_lock() {
 }
 
 void cmd_unlock() {
-		port **ys = {
+		port *ys[] = {
 				lookup("UNLOCK", ports, ports_n),
 				nullptr
 		};
