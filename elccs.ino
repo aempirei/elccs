@@ -278,10 +278,10 @@ port ports[] = {
 
 	counting_port<3>("RPM"),
 
-	pulldown_port("IGN", 5),
-	pulldown_port("ACC", 9),
+	pulldown_port("IGN", 4),
+	pulldown_port("ACC", 5),
 
-	pullup_port("EMERGENCY", 10),
+	pullup_port("EMERGENCY", 6),
 
 	adc_port("BATTERY", A0),
 	adc_port("OXYGEN" , A1),
@@ -290,12 +290,12 @@ port ports[] = {
 	adc_port("MAP"    , A4),
 	adc_port("LIGHT"  , A5),
 
-	digital_output_port("L-UP"  ,  2, HIGH),
-	digital_output_port("L-DOWN",  4, HIGH),
-	digital_output_port("R-UP"  ,  6, HIGH),
-	digital_output_port("R-DOWN",  7, HIGH),
-	digital_output_port("LOCK"  ,  8, HIGH),
-	digital_output_port("UNLOCK", 12, HIGH),
+	digital_output_port("L-UP"  ,  8, HIGH),
+	digital_output_port("L-DOWN",  9, HIGH),
+	digital_output_port("R-UP"  , 10, HIGH),
+	digital_output_port("R-DOWN", 11, HIGH),
+	digital_output_port("LOCK"  , 12, HIGH),
+	digital_output_port("UNLOCK", 13, HIGH),
 };
 
 constexpr size_t ports_n =  sizeof(ports) / sizeof(port);
