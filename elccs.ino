@@ -162,7 +162,7 @@ struct port {
 				term("PIN"   , pin   , DEC);
 				term("S"     , s0    , DEC);
 				term("DS"    , ds()  , DEC);
-				term("M"     , m1    , DEC);
+				term("M"     , m0    , DEC);
 				term("DM"    , dm()  , DEC);
 
 				if (msg != nullptr) {
@@ -190,10 +190,9 @@ struct port {
 				s1 = s0;
 				s0 = s;
 
-				m0 = millis();
-
 				if (ds() != 0) {
-						m1 = m0;
+
+						m0 = millis();
 
 						if(not analog)
 								status();
