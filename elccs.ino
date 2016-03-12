@@ -17,13 +17,10 @@ struct port;
 struct adc_port;
 struct pulldown_port;
 struct pullup_port;
-struct counting_port;
+template <int> struct counting_port;
 
 struct pwm_port;
 struct digital_output_port;
-
-void attach_frequency_counter(const port *);
-void detach_frequency_counter(const port *);
 
 void cmd_left_up();
 void cmd_left_down();
@@ -198,7 +195,6 @@ struct port {
 								status();
 				}
 
-
 				return ds();
 		}
 
@@ -239,15 +235,34 @@ struct pullup_port : port {
 		pullup_port(const char *my_name, int my_pin) : port(my_name, my_pin, INPUT_PULLUP, false, HIGH) { }
 };
 
-struct counting_port : port {
-		counting_port(const char *my_name, int my_pin) : port(my_name, my_pin, INPUT, false, LOW) {
-			attach_frequency_counter(this);
+template <int PIN> struct counting_port : port {
+
+		static_assert(PIN == 2 or PIN == 3, "external interrupts are only available on pins 2 & 3");
+
+		using interrupt_type = decltype(INT0);
+
+		static constexpr interrupt_type interrupt = (PIN == 2) ? INT0 : INT1;
+
+		static counting_port *reference_instance;
+
+		static volatile bool interrupt_flag;
+
+		static void isr() {
+			interrupt_flag = true;
 		}
+
+		counting_port(const char *my_name) : port(my_name, PIN, INPUT, false, LOW) {
+				reference_instance = this;
+				attachInterrupt(interrupt, isr, CHANGE);
+		}
+
 		~counting_port() {
-			detach_frequency_counter(this);
+				detachInterrupt(interrupt);
 		}
 };
 
+template <int PIN> counting_port<PIN> *counting_port<PIN>::reference_instance = nullptr;
+template <int PIN> volatile bool counting_port<PIN>::interrupt_flag = false;
 
 linebuf buf;
 
@@ -261,12 +276,12 @@ void pattern(const int *xs, port **ys) {
 
 port ports[] = {
 
-	pullup_port("EMERGENCY", 3),
+	counting_port<3>("RPM"),
 
 	pulldown_port("IGN", 5),
 	pulldown_port("ACC", 9),
 
-	counting_port("RPM", 10),
+	pullup_port("EMERGENCY", 10),
 
 	adc_port("BATTERY", A0),
 	adc_port("OXYGEN" , A1),
@@ -497,13 +512,9 @@ void port_emergency_handler(port& p) {
 
 */
 
-void attach_frequency_counter(const port *) {
-}
-
-void detach_frequency_counter(const port *) {
-}
-
 void setup() {
+
+		interrupts();
 
 		qsort(ports, ports_n, sizeof(port), compare<port>);
 		qsort(commands, commands_n, sizeof(command), compare<command>);
@@ -513,8 +524,6 @@ void setup() {
 		delay(1000);
 
 		cmd_version();
-
-		// attachInterrupt(0, intvec, FALLING);
 }
 
 void loop() {
