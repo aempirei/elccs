@@ -60,6 +60,8 @@ void cmd_nop();
 void cmd_version();
 void cmd_help();
 
+void pattern(const int *, port **);
+
 /*
  * linebuf - line buffer for serial device
  */
@@ -195,7 +197,7 @@ struct port {
 				return ds() == 0 ? m0 - m1 : dm0;
 		}
 
-		int push(int s) {
+		int update(int s) {
 
 				s1 = s0;
 				s0 = s;
@@ -215,11 +217,11 @@ struct port {
 		}
 
 		int read() {
-				return push(get());
+				return update(get());
 		}
 
 		int write(int s) {
-				return push(set(s));
+				return update(set(s));
 		}
 
 		int toggle() {
@@ -228,18 +230,6 @@ struct port {
 
 		int step() {
 				return mode == OUTPUT ? write(s0) : read();
-		}
-
-		void pattern(int *xs, const char *msg) {
-
-				do {
-						write(*xs++);
-						delay(*xs);
-				} while(*xs++ > 0);
-
-				step();
-
-				status(msg);
 		}
 };
 
@@ -273,16 +263,14 @@ struct counting_port : port {
 };
 
 
-linebuf buf;
+void pattern(const int *xs, port **ys) {
+		do {
+			for(port **zs = ys; *zs != nullptr; zs++)
+				(*zs)->write(*xs);
+			delay(*++xs);
+		} while(*xs++ > 0);
+}
 
-enum pin {
-		pin_battery   = A0,
-		pin_oxygen    = A1,
-		pin_coolant   = A2,
-		pin_oil       = A3,
-		pin_map       = A4,
-		pin_light     = A5
-};
 
 port ports[] = {
 
@@ -401,12 +389,14 @@ void cmd_ping() {
 		Serial.println("RETURN::PONG");
 }
 
-void update_ports() {
+void process_ports() {
 		for(size_t n = 0; n < ports_n; n++)
 				ports[n].step();
 }
 
-void update_buffer() {
+linebuf buf;
+
+void process_buffer() {
 
 	buf.update();
 
@@ -529,6 +519,6 @@ void setup() {
 }
 
 void loop() {
-	update_ports();
-	update_buffer();
+	process_ports();
+	process_buffer();
 }
