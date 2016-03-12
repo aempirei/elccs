@@ -124,14 +124,13 @@ struct port {
 		int s1;
 
 		unsigned long m0;
-		unsigned long m1;
 
 		int ds() {
 				return s0 - s1;
 		}
 
 		long dm() {
-			return m0 - m1;
+			return millis() - m0;
 		}
 
 		template <typename T, typename U> void term(const char *key, T x, U b) {
@@ -142,7 +141,7 @@ struct port {
 		}
 
 		port(const char *my_name, int my_pin, int my_mode, bool my_analog, int s)
-				: name(my_name), pin(my_pin), mode(my_mode), analog(my_analog), m1(millis())
+				: name(my_name), pin(my_pin), mode(my_mode), analog(my_analog), m0(millis())
 		{
 
 				pinMode(pin, mode);
@@ -163,6 +162,7 @@ struct port {
 				term("PIN"   , pin   , DEC);
 				term("S"     , s0    , DEC);
 				term("DS"    , ds()  , DEC);
+				term("M"     , m1    , DEC);
 				term("DM"    , dm()  , DEC);
 
 				if (msg != nullptr) {
@@ -514,8 +514,6 @@ void setup() {
 		delay(1000);
 
 		cmd_version();
-		cmd_status();
-		cmd_help();
 
 		// attachInterrupt(0, intvec, FALLING);
 }
