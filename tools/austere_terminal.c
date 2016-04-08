@@ -10,9 +10,17 @@ int nonblock(int fd) {
     return fcntl(fd, F_SETFL, flags | O_NONBLOCK);
 }
 
-int main() {
+int main(int argc, char **argv) {
 
-    int fd = open("/dev/ttyUSB0", O_RDWR);
+	const char *device_name = "/dev/ttyUSB0";
+
+	if(argc > 1) {
+		device_name = argv[1];
+	}
+
+	fprintf(stderr, "using device %s\n", device_name);
+
+	int fd = open(device_name, O_RDWR);
 
     if (fd == -1) {
         perror("open()");

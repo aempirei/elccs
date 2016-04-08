@@ -1,3 +1,3 @@
-BOARD_TAG = uno
+BOARD_TAG = atmega328
 include /usr/share/arduino/Arduino.mk
 CXXFLAGS = -std=c++11

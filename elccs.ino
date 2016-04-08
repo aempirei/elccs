@@ -278,10 +278,10 @@ port ports[] = {
 
 	counting_port<3>("RPM"),
 
-	pulldown_port("IGN", 4),
-	pulldown_port("ACC", 5),
+	pulldown_port("IGN", 8),
+	pulldown_port("ACC", 9),
 
-	pullup_port("EMERGENCY", 6),
+	pullup_port("EMERGENCY", 10),
 
 	adc_port("BATTERY", A0),
 	adc_port("OXYGEN" , A1),
@@ -290,10 +290,10 @@ port ports[] = {
 	adc_port("MAP"    , A4),
 	adc_port("LIGHT"  , A5),
 
-	digital_output_port("L-UP"  ,  8, HIGH),
-	digital_output_port("L-DOWN",  9, HIGH),
-	digital_output_port("R-UP"  , 10, HIGH),
-	digital_output_port("R-DOWN", 11, HIGH),
+	digital_output_port("L-UP"  ,  4, HIGH),
+	digital_output_port("L-DOWN",  5, HIGH),
+	digital_output_port("R-UP"  ,  6, HIGH),
+	digital_output_port("R-DOWN",  7, HIGH),
 	digital_output_port("LOCK"  , 12, HIGH),
 	digital_output_port("UNLOCK", 13, HIGH),
 };
