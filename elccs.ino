@@ -326,7 +326,7 @@ int pattern_door[] = {
 };
 
 int pattern_window[] = {
-	LOW, 1500, HIGH, 0
+	LOW, 1000, HIGH, 0
 };
 
 void cmd_uptime() {
