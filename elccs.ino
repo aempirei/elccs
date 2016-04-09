@@ -56,209 +56,216 @@ void pattern(const int *, port **);
 
 struct linebuf {
 
-		static const uint8_t line_max_sz = 128;
-		static const char EOL = '\n';
-		static const char NUL = '\0';
+	static const uint8_t line_max_sz = 32;
+	static const char LF = '\n';
+	static const char CR = '\r';
+	static const char NUL = '\0';
 
-		char line[line_max_sz + 1];
-		uint8_t line_sz;
-		bool locked;
+	char line[line_max_sz + 1];
+	uint8_t line_sz;
+	bool ready;
+	bool ignore;
 
-		linebuf() : line_sz(0), locked(false) {
+	linebuf() : line_sz(0), ready(false), ignore(false) {
+	}
+
+	bool is_empty() const {
+		return line_sz == 0;
+	}
+
+	bool is_full() const {
+		return line_sz == line_max_sz;
+	}
+
+	bool is_ready() const {
+		return ready;
+	}
+
+	bool is_ignored() const {
+		return ignore;
+	}
+
+	void clear() {
+		line_sz = 0;
+		ready = false;
+		ignore = false;
+	}
+
+	void update() {
+
+		while (not is_ready() and Serial.available() > 0) {
+
+			char ch = Serial.read();
+
+			if(ch == CR or ch == LF) {
+				line[line_sz] = NUL;
+				ready = true;
+			} else {
+				line[line_sz++] = ch;
+			}
+
+			if (is_full()) {
+				clear();
+				ignore = true;
+			}
+
+			if(is_ready() and (is_empty() or is_ignored()))
+				clear();
 		}
-
-		bool empty() const {
-				return line_sz == 0;
-		}
-
-		int lastch() const {
-				return empty() ? -1 : line[line_sz - 1];
-		}
-
-		bool full() const {
-				return line_sz == line_max_sz;
-		}
-
-		bool is_ready() const {
-				return locked;
-		}
-
-		void update() {
-
-				while (not is_ready() and Serial.available() > 0) {
-
-						line[line_sz++] = Serial.read();
-
-						if (lastch() == EOL) {
-
-								line[--line_sz] = NUL;
-								locked = true;
-
-						} else if (full()) {
-
-								line[line_sz] = NUL;
-								locked = true;
-						}
-				}
-		}
-
-		void clear() {
-				line_sz = 0;
-				locked = false;
-		}
+	}
 };
 
 struct port {
 
-		const char *name;
+	const char *name;
 
-		uint8_t pin;
-		uint16_t mode;
+	uint8_t pin;
+	uint16_t mode;
 
-		bool analog;
+	bool analog;
 
-		int s0;
-		int s1;
+	int s0;
+	int s1;
 
-		unsigned long m0;
+	unsigned long m0;
 
-		int ds() {
-				return s0 - s1;
+	int ds() {
+		return s0 - s1;
+	}
+
+	long dm() {
+		return millis() - m0;
+	}
+
+	template <typename T, typename U> void term(const char *key, T x, U b) {
+		Serial.print(" ");
+		Serial.print(key);
+		Serial.print("=");
+		Serial.print(x, b);
+	}
+
+	port(const char *my_name, int my_pin, int my_mode, bool my_analog, int s)
+		: name(my_name), pin(my_pin), mode(my_mode), analog(my_analog), m0(millis())
+	{
+
+		pinMode(pin, mode);
+
+		if (mode == OUTPUT) {
+			write(s);
+		} else {
+			s0 = get();
+			read();
+		}
+	}
+
+	void status(const char *msg = nullptr) {
+
+		Serial.print(":");
+		Serial.print(name);
+
+		term("PIN"   , pin   , DEC);
+		term("S"     , s0    , DEC);
+		term("DS"    , ds()  , DEC);
+		term("M"     , m0    , DEC);
+		term("DM"    , dm()  , DEC);
+
+		if (msg != nullptr) {
+			Serial.print(" :");
+			Serial.print(msg);
 		}
 
-		long dm() {
-			return millis() - m0;
+		Serial.println("");
+	}
+
+	int get() {
+		return (analog ? analogRead : digitalRead)(pin);
+	}
+
+	int set(int s) {
+		if (analog)
+			analogWrite(pin, s);
+		else
+			digitalWrite(pin, s);
+		return s;
+	}
+
+	int update(int s) {
+
+		s1 = s0;
+		s0 = s;
+
+		if (ds() != 0) {
+
+			m0 = millis();
+
+			if(not analog)
+				status();
 		}
 
-		template <typename T, typename U> void term(const char *key, T x, U b) {
-				Serial.print(" ");
-				Serial.print(key);
-				Serial.print("=");
-				Serial.print(x, b);
-		}
+		return ds();
+	}
 
-		port(const char *my_name, int my_pin, int my_mode, bool my_analog, int s)
-				: name(my_name), pin(my_pin), mode(my_mode), analog(my_analog), m0(millis())
-		{
+	int read() {
+		return update(get());
+	}
 
-				pinMode(pin, mode);
+	int write(int s) {
+		return update(set(s));
+	}
 
-				if (mode == OUTPUT) {
-						write(s);
-				} else {
-						s0 = get();
-						read();
-				}
-		}
+	int toggle() {
+		return write(not s0);
+	}
 
-		void status(const char *msg = nullptr) {
-
-				Serial.print(":");
-				Serial.print(name);
-
-				term("PIN"   , pin   , DEC);
-				term("S"     , s0    , DEC);
-				term("DS"    , ds()  , DEC);
-				term("M"     , m0    , DEC);
-				term("DM"    , dm()  , DEC);
-
-				if (msg != nullptr) {
-						Serial.print(" :");
-						Serial.print(msg);
-				}
-
-				Serial.println("");
-		}
-
-		int get() {
-				return (analog ? analogRead : digitalRead)(pin);
-		}
-
-		int set(int s) {
-				if (analog)
-						analogWrite(pin, s);
-				else
-						digitalWrite(pin, s);
-				return s;
-		}
-
-		int update(int s) {
-
-				s1 = s0;
-				s0 = s;
-
-				if (ds() != 0) {
-
-						m0 = millis();
-
-						if(not analog)
-								status();
-				}
-
-				return ds();
-		}
-
-		int read() {
-				return update(get());
-		}
-
-		int write(int s) {
-				return update(set(s));
-		}
-
-		int toggle() {
-				return write(not s0);
-		}
-
-		int step() {
-				return mode == OUTPUT ? write(s0) : read();
-		}
+	int step() {
+		return mode == OUTPUT ? write(s0) : read();
+	}
 };
 
 struct pwm_port : port {
-		pwm_port(const char *my_name, int my_pin, int s) : port(my_name, my_pin, OUTPUT, true, s) { }
+	pwm_port(const char *my_name, int my_pin, int s) : port(my_name, my_pin, OUTPUT, true, s) { }
 };
 
 struct digital_output_port : port {
-		digital_output_port(const char *my_name, int my_pin, int s) : port(my_name, my_pin, OUTPUT, false, s) { }
+	digital_output_port(const char *my_name, int my_pin, int s) : port(my_name, my_pin, OUTPUT, false, s) { }
 };
 
 struct adc_port : port {
-		adc_port(const char *my_name, int my_pin) : port(my_name, my_pin, INPUT, true, 0) { }
+	adc_port(const char *my_name, int my_pin) : port(my_name, my_pin, INPUT, true, 0) { }
 };
 
 struct pulldown_port : port {
-		pulldown_port(const char *my_name, int my_pin) : port(my_name, my_pin, INPUT, false, LOW) { }
+	pulldown_port(const char *my_name, int my_pin) : port(my_name, my_pin, INPUT, false, LOW) { }
 };
 
 struct pullup_port : port {
-		pullup_port(const char *my_name, int my_pin) : port(my_name, my_pin, INPUT_PULLUP, false, HIGH) { }
+	pullup_port(const char *my_name, int my_pin) : port(my_name, my_pin, INPUT_PULLUP, false, HIGH) { }
 };
 
 template <int PIN> struct counting_port : port {
 
-		static_assert(PIN == 2 or PIN == 3, "external interrupts are only available on pins 2 & 3");
+	static_assert(PIN == 2 or PIN == 3, "external interrupts are only available on pins 2 & 3");
 
-		using interrupt_type = decltype(INT0);
+	using interrupt_type = decltype(INT0);
 
-		static constexpr interrupt_type interrupt = (PIN == 2) ? INT0 : INT1;
+	static constexpr interrupt_type interrupt = (PIN == 2) ? INT0 : INT1;
 
-		static counting_port *reference_instance;
+	static counting_port *reference_instance;
 
-		static volatile bool interrupt_flag;
+	static volatile bool interrupt_flag;
 
-		static void isr() {
-			interrupt_flag = true;
-		}
+	static void isr() {
+		interrupt_flag = true;
+	}
 
-		counting_port(const char *my_name) : port(my_name, PIN, INPUT, false, LOW) {
-				reference_instance = this;
-				attachInterrupt(interrupt, isr, CHANGE);
-		}
+	counting_port(const char *my_name) : port(my_name, PIN, INPUT, false, LOW) {
+		reference_instance = this;
+		attachInterrupt(interrupt, isr, CHANGE);
+	}
 
-		~counting_port() {
-				detachInterrupt(interrupt);
-		}
+	~counting_port() {
+		detachInterrupt(interrupt);
+	}
 };
 
 template <int PIN> counting_port<PIN> *counting_port<PIN>::reference_instance = nullptr;
@@ -267,21 +274,21 @@ template <int PIN> volatile bool counting_port<PIN>::interrupt_flag = false;
 linebuf buf;
 
 void pattern(const int *xs, port **ys) {
-		do {
-			for(port **zs = ys; *zs != nullptr; zs++)
-				(*zs)->write(*xs);
-			delay(*++xs);
-		} while(*xs++ > 0);
+	do {
+		for(port **zs = ys; *zs != nullptr; zs++)
+			(*zs)->write(*xs);
+		delay(*++xs);
+	} while(*xs++ > 0);
 }
 
 port ports[] = {
 
 	counting_port<3>("RPM"),
 
-	pulldown_port("IGN", 8),
-	pulldown_port("ACC", 9),
+	// pulldown_port("IGN", 8),
+	// pulldown_port("ACC", 9),
 
-	pullup_port("EMERGENCY", 10),
+	// pullup_port("EMERGENCY", 10),
 
 	adc_port("BATTERY", A0),
 	adc_port("OXYGEN" , A1),
@@ -301,19 +308,19 @@ port ports[] = {
 constexpr size_t ports_n =  sizeof(ports) / sizeof(port);
 
 command commands[] = {
-		command("l-up"   , "raise left window"           , cmd_left_up   ),
-		command("l-down" , "lower left window"           , cmd_left_down ),
-		command("r-up"   , "raise right window"          , cmd_right_up  ),
-		command("r-down" , "lower right window"          , cmd_right_down),
-		command("up"     , "raise all windows"           , cmd_all_up    ),
-		command("down"   , "lower all windows"           , cmd_all_down  ),
-		command("lock"   , "lock all doors"              , cmd_lock      ),
-		command("unlock" , "unlock all doors"            , cmd_unlock    ),
-		command("status" , "report status of all devices", cmd_status    ),
-		command("uptime" , "display system uptime"       , cmd_uptime    ),
-		command("nop"    , "no operation"                , cmd_nop       ),
-		command("version", "display firmware information", cmd_version   ),
-		command("help"   , "display this help screen"    , cmd_help      ),
+	command("lu"     , "raise left window"           , cmd_left_up   ),
+	command("ld"     , "lower left window"           , cmd_left_down ),
+	command("ru"     , "raise right window"          , cmd_right_up  ),
+	command("rd"     , "lower right window"          , cmd_right_down),
+	command("up"     , "raise all windows"           , cmd_all_up    ),
+	command("down"   , "lower all windows"           , cmd_all_down  ),
+	command("lock"   , "lock all doors"              , cmd_lock      ),
+	command("unlock" , "unlock all doors"            , cmd_unlock    ),
+	command("status" , "report status of all devices", cmd_status    ),
+	command("uptime" , "display system uptime"       , cmd_uptime    ),
+	command("nop"    , "no operation"                , cmd_nop       ),
+	command("version", "display firmware information", cmd_version   ),
+	command("help"   , "display this help screen"    , cmd_help      ),
 };
 
 constexpr size_t commands_n = sizeof(commands) / sizeof(command);
@@ -332,7 +339,7 @@ int pattern_window[] = {
 void cmd_uptime() {
 	Serial.print(":UPTIME MS=");
 	Serial.print(millis(), DEC);
-	Serial.write('\n');
+	Serial.println("");
 }
 
 void cmd_nop() {
@@ -345,111 +352,111 @@ void cmd_status() {
 }
 
 void cmd_version() {
-		Serial.write('\n');
-		Serial.println("*************************************");
-		Serial.println("* - El Camino Control System v1.0 - *");
-		Serial.println("* - Copyright(c) 2015, 256 LLC    - *");
-		Serial.println("* - Written by Christopher Abad   - *");
-		Serial.println("*************************************");
-		Serial.write('\n');
+	Serial.println("");
+	Serial.println("*************************************");
+	Serial.println("* - El Camino Control System v1.0 - *");
+	Serial.println("* - Copyright(c) 2015, 256 LLC    - *");
+	Serial.println("* - Written by Christopher Abad   - *");
+	Serial.println("*************************************");
+	Serial.println("");
 }
 
 void cmd_help() {
 
-		Serial.write('\n');
-		Serial.println("********************");
-		Serial.println("* - Command Help - *");
-		Serial.println("********************");
-		Serial.write('\n');
+	Serial.println("");
+	Serial.println("********************");
+	Serial.println("* - Command Help - *");
+	Serial.println("********************");
+	Serial.println("");
 
-		for(size_t n = 0; n < commands_n; n++) {
-				Serial.print("  ");
-				Serial.print(commands[n].name);
-				for(int k = 10 - strlen(commands[n].name); k >= 0; k--)
-						Serial.write(' ');
-				Serial.println(commands[n].help);
-		}
+	for(size_t n = 0; n < commands_n; n++) {
+		Serial.print("  ");
+		Serial.print(commands[n].name);
+		for(int k = 10 - strlen(commands[n].name); k >= 0; k--)
+			Serial.write(' ');
+		Serial.println(commands[n].help);
+	}
 
-		Serial.write('\n');
+	Serial.println("");
 }
 
 void cmd_left_up() {
-		port *ys[] = {
-				lookup("L-UP", ports, ports_n),
-				nullptr
-		};
-		pattern(pattern_window, ys);
+	port *ys[] = {
+		lookup("L-UP", ports, ports_n),
+		nullptr
+	};
+	pattern(pattern_window, ys);
 }
 
 void cmd_left_down() {
-		port *ys[] = {
-				lookup("L-DOWN", ports, ports_n),
-				nullptr
-		};
-		pattern(pattern_window, ys);
+	port *ys[] = {
+		lookup("L-DOWN", ports, ports_n),
+		nullptr
+	};
+	pattern(pattern_window, ys);
 }
 
 void cmd_right_up() {
-		port *ys[] = {
-				lookup("R-UP", ports, ports_n),
-				nullptr
-		};
-		pattern(pattern_window, ys);
+	port *ys[] = {
+		lookup("R-UP", ports, ports_n),
+		nullptr
+	};
+	pattern(pattern_window, ys);
 }
 
 void cmd_right_down() {
-		port *ys[] = {
-				lookup("R-DOWN", ports, ports_n),
-				nullptr
-		};
-		pattern(pattern_window, ys);
+	port *ys[] = {
+		lookup("R-DOWN", ports, ports_n),
+		nullptr
+	};
+	pattern(pattern_window, ys);
 }
 
 void cmd_all_up() {
-		port *ys[] = {
-				lookup("L-UP", ports, ports_n),
-				lookup("R-UP", ports, ports_n),
-				nullptr
-		};
-		pattern(pattern_window, ys);
+	port *ys[] = {
+		lookup("L-UP", ports, ports_n),
+		lookup("R-UP", ports, ports_n),
+		nullptr
+	};
+	pattern(pattern_window, ys);
 }
 
 void cmd_all_down() {
-		port *ys[] = {
-				lookup("L-DOWN", ports, ports_n),
-				lookup("R-DOWN", ports, ports_n),
-				nullptr
-		};
-		pattern(pattern_window, ys);
+	port *ys[] = {
+		lookup("L-DOWN", ports, ports_n),
+		lookup("R-DOWN", ports, ports_n),
+		nullptr
+	};
+	pattern(pattern_window, ys);
 }
 
 void cmd_lock() {
-		port *ys[] = {
-				lookup("LOCK", ports, ports_n),
-				nullptr
-		};
-		pattern(pattern_door, ys);
+	port *ys[] = {
+		lookup("LOCK", ports, ports_n),
+		nullptr
+	};
+	pattern(pattern_door, ys);
 }
 
 void cmd_unlock() {
-		port *ys[] = {
-				lookup("UNLOCK", ports, ports_n),
-				nullptr
-		};
-		pattern(pattern_door, ys);
+	port *ys[] = {
+		lookup("UNLOCK", ports, ports_n),
+		nullptr
+	};
+	pattern(pattern_door, ys);
 }
 
 void process_ports() {
-		for(size_t n = 0; n < ports_n; n++)
-				ports[n].step();
+	for(size_t n = 0; n < ports_n; n++)
+		ports[n].step();
 }
 
 template <typename T> int compare(const void *a, const void *b) {
-		return is_named<T>(((const T *)a)->name, b);
+	return is_named<T>(((const T *)a)->name, b);
 }
 
 template <typename T> int is_named(const void *key, const void *member) {
-		return strcasecmp((const char *)key, ((const T *)member)->name);
+	return strcasecmp((const char *)key, ((const T *)member)->name);
 }
 
 template <typename T> T *lookup(const char *name, T *objects, size_t n) {
@@ -465,8 +472,8 @@ void process_buffer() {
 		command *cmd = lookup(buf.line, commands, commands_n);
 
 		if(cmd == nullptr) {
-				Serial.print(":ERROR TYPE=unknown-command COMMAND=");
-				Serial.println(buf.line);
+			Serial.print(":ERROR TYPE=unknown-command COMMAND=");
+			Serial.println(buf.line);
 		} else {
 			cmd->f();
 		}
@@ -484,46 +491,46 @@ void process_buffer() {
 volatile int qstate = LOW;
 
 void intvec() {
-	qstate = not qstate;
+qstate = not qstate;
 }
 
 void port_emergency_handler(port& p) {
 
-	// when emergency port is active if level is LOW for 3000ms, trigger unlock port and deactivate emergency port
-	// activate emergency port on rising edge when inactive
+// when emergency port is active if level is LOW for 3000ms, trigger unlock port and deactivate emergency port
+// activate emergency port on rising edge when inactive
 
-	if (p.active) {
+if (p.active) {
 
-		if (p.s0 == LOW and p.ds() == 0 and p.dm() >= 3000) {
-			p.active = false;
-			p.status("emergency triggered");
-			port_unlock.pattern(pattern_servo, "unlock issued");
-		}
-
-	} else {
-
-		if (p.ds() > 0) {
-			p.active = true;
-			p.status("emergency trigger reactivated");
-		}
-
-	}
+if (p.s0 == LOW and p.ds() == 0 and p.dm() >= 3000) {
+p.active = false;
+p.status("emergency triggered");
+port_unlock.pattern(pattern_servo, "unlock issued");
 }
 
-*/
+} else {
+
+if (p.ds() > 0) {
+p.active = true;
+p.status("emergency trigger reactivated");
+}
+
+}
+}
+
+ */
 
 void setup() {
 
-		interrupts();
+	interrupts();
 
-		qsort(ports, ports_n, sizeof(port), compare<port>);
-		qsort(commands, commands_n, sizeof(command), compare<command>);
+	qsort(ports, ports_n, sizeof(port), compare<port>);
+	qsort(commands, commands_n, sizeof(command), compare<command>);
 
-		Serial.begin(115200);
+	Serial.begin(115200);
 
-		delay(1000);
+	delay(1000);
 
-		cmd_version();
+	cmd_version();
 }
 
 void loop() {
