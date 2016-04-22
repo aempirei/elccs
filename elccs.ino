@@ -10,7 +10,7 @@
 #include <stdlib.h>
 
 struct linebuf;
-
+struct config;
 struct command;
 struct port;
 
@@ -35,6 +35,7 @@ void cmd_uptime();
 void cmd_nop();
 void cmd_version();
 void cmd_help();
+void cmd_echo();
 
 template <typename> int compare(const void *, const void *);
 template <typename> int is_named(const void *, const void *);
@@ -51,6 +52,12 @@ struct command {
 	command(const char *my_name, const char *my_help, function_type *my_f) : name(my_name), help(my_help), f(my_f) { }
 };
 
+struct config {
+	bool echo;
+	config() : echo(false) { }
+};
+
+config cfg;
 
 void pattern(const int *, port **);
 
@@ -60,6 +67,7 @@ struct linebuf {
 	static constexpr char LF = '\n';
 	static constexpr char CR = '\r';
 	static constexpr char BS = '\b';
+	static constexpr char DEL = '\x7f';
 	static constexpr char NUL = '\0';
 
 	char line[line_max_sz + 1];
@@ -101,11 +109,18 @@ struct linebuf {
 			if(ch == CR or ch == LF) {
 				line[line_sz] = NUL;
 				ready = true;
-			} else if(ch == BS) {
+				if(cfg.echo)
+					Serial.write("\r\n");
+			} else if(ch == BS or ch == DEL) {
 				if(line_sz > 0)
 					line_sz--;
+				if(cfg.echo) {
+					Serial.print("\33[D \33[D");
+				}
 			} else {
 				line[line_sz++] = ch;
+				if(cfg.echo)
+					Serial.write(ch);
 			}
 
 			if (is_full()) {
@@ -325,6 +340,7 @@ command commands[] = {
 	command("nop"    , "no operation"                , cmd_nop       ),
 	command("version", "display firmware information", cmd_version   ),
 	command("help"   , "display this help screen"    , cmd_help      ),
+	command("echo"   , "toggle local echo"           , cmd_echo      ),
 };
 
 constexpr size_t commands_n = sizeof(commands) / sizeof(command);
@@ -348,6 +364,12 @@ void cmd_uptime() {
 
 void cmd_nop() {
 	Serial.println(":VOID");
+}
+
+void cmd_echo() {
+	cfg.echo = not cfg.echo;
+	Serial.print(":ECHO ENABLED=");
+	Serial.println(cfg.echo ? "TRUE" : "FALSE");
 }
 
 void cmd_status() {
