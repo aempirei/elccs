@@ -56,10 +56,11 @@ void pattern(const int *, port **);
 
 struct linebuf {
 
-	static const uint8_t line_max_sz = 32;
-	static const char LF = '\n';
-	static const char CR = '\r';
-	static const char NUL = '\0';
+	static constexpr uint8_t line_max_sz = 32;
+	static constexpr char LF = '\n';
+	static constexpr char CR = '\r';
+	static constexpr char BS = '\b';
+	static constexpr char NUL = '\0';
 
 	char line[line_max_sz + 1];
 	uint8_t line_sz;
@@ -100,6 +101,9 @@ struct linebuf {
 			if(ch == CR or ch == LF) {
 				line[line_sz] = NUL;
 				ready = true;
+			} else if(ch == BS) {
+				if(line_sz > 0)
+					line_sz--;
 			} else {
 				line[line_sz++] = ch;
 			}
