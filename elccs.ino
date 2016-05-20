@@ -4,6 +4,9 @@
  * - Written by Christopher Abad   - *
  *************************************/
 
+// #include <Wire.h>
+// #include <LiquidCrystal_I2C.h>
+
 #include <stdint.h>
 #include <ctype.h>
 #include <string.h>
@@ -543,7 +546,30 @@ p.status("emergency trigger reactivated");
 }
 }
 
- */
+LiquidCrystal_I2C lcd(0x27);
+
+void setup_lcd()
+{
+	lcd.begin(20,4);
+
+	lcd.home();
+
+	lcd.print("El Camino ECM v1.0");
+	lcd.setCursor ( 0, 1 );
+	lcd.print("Copyright(c) 2016");
+	lcd.setCursor ( 0, 2 );
+	lcd.print("Christopher Abad");
+	lcd.setCursor ( 0, 3 );
+	lcd.print("Iteration No: ");
+}
+
+void update_lcd() {
+	static int n = 1;
+	lcd.setCursor(14,3);
+	lcd.print(n++,DEC);
+}
+
+*/
 
 void setup() {
 
@@ -557,9 +583,12 @@ void setup() {
 	delay(1000);
 
 	cmd_version();
+
+	// setup_lcd();
 }
 
 void loop() {
 	process_ports();
 	process_buffer();
+	// update_lcd();
 }
