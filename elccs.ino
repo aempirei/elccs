@@ -11,6 +11,7 @@
 #include <ctype.h>
 #include <string.h>
 #include <stdlib.h>
+#include <limits.h>
 
 struct linebuf;
 struct config;
@@ -247,7 +248,7 @@ struct port {
 				return write(not s0);
 		}
 
-		int step() {
+		virtual int step() {
 				return mode == OUTPUT ? write(s0) : read();
 		}
 };
@@ -280,16 +281,35 @@ template <int PIN> struct counting_port : port {
 
 		static constexpr interrupt_type interrupt = (PIN == 2) ? INT0 : INT1;
 
+		static constexpr int coef0 = 2;
+		static constexpr int coef1 = 1;
+
 		static counting_port *reference_instance;
 
-		static volatile bool interrupt_flag;
+		static volatile int ms0;
+		static volatile int ms1;
+
+		static volatile int dms0;
+		static volatile int dms1;
 
 		static void isr() {
-				interrupt_flag = true;
+			ms1 = millis();
+			dms1 = ms1 - ms0;
+			ms0 = ms1;
+			dms0 = (coef0 * dms0 + coef1 * dms1) / (coef0 + coef1);
+		}
+
+		int rpm() {
+			return 15 * 1000 / dms0;
+		}
+
+		virtual int step() {
+			return rpm();
 		}
 
 		counting_port(const char *my_name) : port(my_name, PIN, INPUT, false, LOW) {
 				reference_instance = this;
+				ms0 = millis();
 				attachInterrupt(interrupt, isr, CHANGE);
 		}
 
@@ -299,7 +319,12 @@ template <int PIN> struct counting_port : port {
 };
 
 template <int PIN> counting_port<PIN> *counting_port<PIN>::reference_instance = nullptr;
-template <int PIN> volatile bool counting_port<PIN>::interrupt_flag = false;
+
+template <int PIN> volatile int counting_port<PIN>::ms0;
+template <int PIN> volatile int counting_port<PIN>::ms1;
+
+template <int PIN> volatile int counting_port<PIN>::dms0 = INT_MAX;
+template <int PIN> volatile int counting_port<PIN>::dms1;
 
 linebuf buf;
 
@@ -329,8 +354,8 @@ port ports[] = {
 
 		digital_output_port("L-UP"  ,  4, HIGH),
 		digital_output_port("L-DOWN",  5, HIGH),
-		digital_output_port("R-UP"  ,  6, HIGH),
-		digital_output_port("R-DOWN",  7, HIGH),
+		digital_output_port("R-DOWN",  6, HIGH),
+		digital_output_port("R-UP"  ,  7, HIGH),
 		digital_output_port("LOCK"  , 12, HIGH),
 		digital_output_port("UNLOCK", 13, HIGH),
 };
